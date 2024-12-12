@@ -1,0 +1,178 @@
+/* General Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f2f4f7;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    width: 100%; /* Make container width 100% */
+    padding: 20px;
+    display: block; /* Removed flex, now the elements will be stacked naturally */
+    background: #f2f4f7;
+}
+
+.form-container {
+    background-color: #ffffff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    max-width: 500px; /* Increased max-width */
+    margin: 20px auto; /* Center the container */
+    width: 100%;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 32px;
+    color: #333;
+}
+
+h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 24px;
+    color: #555;
+}
+
+.form {
+    display: flex;
+    flex-direction: column; /* Ensure form fields are stacked vertically */
+    align-items: stretch; /* Make form elements stretch to full width */
+}
+
+input {
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 16px;
+    width: 100%; /* Ensure the inputs take up full width */
+}
+
+button {
+    padding: 10px;
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    width: 100%; /* Make the button stretch to full width */
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+p {
+    text-align: center;
+    font-size: 14px;
+    color: #666;
+}
+
+a {
+    color: #007BFF;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.register-text {
+    margin-top: 10px;
+}
+
+.error {
+    color: red;
+    text-align: center;
+    margin-top: 10px;
+}
+
+.success {
+    color: green;
+    text-align: center;
+    margin-top: 10px;
+}
+
+/* User List Table Styles */
+table {
+    width: 100%;
+    margin-top: 30px; /* Give some space above the table */
+    border-collapse: collapse;
+    background-color: #ffffff;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden; /* Ensure rounded corners are applied */
+}
+
+table th, table td {
+    padding: 12px;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid #ddd;
+}
+
+table th {
+    background-color: #007BFF;
+    color: white;
+    font-size: 18px;
+}
+
+table td {
+    color: #333;
+    font-size: 16px;
+}
+
+table tr:hover {
+    background-color: #f9f9f9;
+}
+
+table td:last-child {
+    text-align: right; /* Align the balance column to the right */
+}
+
+table .admin-status {
+    font-weight: bold;
+}
+
+table .admin-status.admin {
+    color: #28a745; /* Green for Admin */
+}
+
+table .admin-status.user {
+    color: #dc3545; /* Red for User */
+}
+
+/* Add a hover effect on rows */
+table tr:hover {
+    background-color: #e2e2e2;
+}
+
+/* Add some padding around the table for better spacing */
+.container .table-container {
+    padding: 20px;
+    margin-top: 20px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+}
+
+table th:nth-child(4), table td:nth-child(4) {
+    text-align: left; /* Align text to the left */
+    vertical-align: middle; /* Center content vertically */
+    word-break: break-word; /* Handle long IBAN strings */
+}
+
+.admin-dashboard {
+    margin-left: 10px;
+}
