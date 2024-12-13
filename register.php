@@ -44,9 +44,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // Generate a unique Finnish IBAN
         $iban = generateFinnishIBAN($pdo);
 
-        // Insert a new account with 100€ balance
-        $stmt = $pdo->prepare("INSERT INTO accounts (user_id, iban, balance) VALUES (?, ?, ?)");
-        $stmt->execute([$user_id, $iban, 100.00]);
+        // Insert a default bank account with "Default Account" name, 100€ balance, and is_approved = TRUE
+        $stmt = $pdo->prepare("
+            INSERT INTO accounts (user_id, iban, balance, name, is_approved) 
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$user_id, $iban, 100.00, "Default Account", true]);
 
         // Commit the transaction
         $pdo->commit();

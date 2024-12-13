@@ -20,6 +20,33 @@ if (!$user || !$user['is_admin']) {
     exit;
 }
 
+// Function to generate Finnish IBAN
+function generateFinnishIBAN($pdo) {
+    do {
+        $countryCode = "FI";
+        $bankCode = str_pad(rand(1, 999999), 6, '0', STR_PAD_LEFT);
+        $accountNumber = str_pad(rand(1, 9999999), 7, '0', STR_PAD_LEFT);
+        $bban = $bankCode . $accountNumber;
+
+        $ibanNumeric = str_replace(
+            range('A', 'Z'),
+            range(10, 35),
+            $bban . $countryCode . "00"
+        );
+        $checksum = 98 - bcmod($ibanNumeric, 97);
+        $checksum = str_pad($checksum, 2, '0', STR_PAD_LEFT);
+
+        $iban = $countryCode . $checksum . $bban;
+
+        // Check if IBAN is unique
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM accounts WHERE iban = ?");
+        $stmt->execute([$iban]);
+        $exists = $stmt->fetchColumn();
+    } while ($exists > 0); // Ensure IBAN is unique
+
+    return $iban;
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // Add money to user account
@@ -33,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         echo "<p class='success'>Successfully added €$amount to account ID $account_id.</p>";
     }
-    // Create new user
+    // Create a new user
     elseif (isset($_POST['create_user'])) {
         $username = $_POST['username'];
         $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
@@ -42,14 +69,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // Create a new user
         $stmt = $pdo->prepare("INSERT INTO users (username, password, is_admin) VALUES (?, ?, ?)");
         $stmt->execute([$username, $password, false]);
-        $user_id = $pdo->lastInsertId();
+        $new_user_id = $pdo->lastInsertId();
 
-        // Create an account for the new user with the initial balance, IBAN, and is_approved status
-        $iban = 'FI' . str_pad(rand(1000000000000000, 9999999999999999), 18, '0', STR_PAD_LEFT);  // Generate a random Finnish IBAN
-        $stmt = $pdo->prepare("INSERT INTO accounts (user_id, iban, balance, is_approved) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$user_id, $iban, $initial_balance, false]);
+        // Create the default account for the new user
+        $iban = generateFinnishIBAN($pdo);
+        $stmt = $pdo->prepare("INSERT INTO accounts (user_id, iban, balance, name, is_approved) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([$new_user_id, $iban, $initial_balance, 'Default Account', true]);
 
         echo "<p class='success'>User '$username' created with an initial balance of €$initial_balance.</p>";
+    }
+    // Create a new bank account for an existing user
+    elseif (isset($_POST['create_bank_account'])) {
+        $user_id_to_create = $_POST['user_id'];
+        $account_name = $_POST['account_name'];
+        $initial_balance = $_POST['initial_balance'];
+
+        // Generate a unique IBAN
+        $iban = generateFinnishIBAN($pdo);
+
+        // Insert a new account with is_approved = FALSE
+        $stmt = $pdo->prepare("INSERT INTO accounts (user_id, iban, balance, name, is_approved) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([$user_id_to_create, $iban, $initial_balance, $account_name, false]);
+
+        echo "<p class='success'>New account created for User ID $user_id_to_create. Awaiting admin approval.</p>";
     }
     // Assign admin privileges
     elseif (isset($_POST['assign_admin'])) {
@@ -85,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     elseif (isset($_POST['reject_account'])) {
         $account_id = $_POST['account_id_to_reject'];
 
-        // Delete the account (or you can set is_approved to FALSE again depending on your approach)
+        // Delete the account
         $stmt = $pdo->prepare("DELETE FROM accounts WHERE id = ?");
         $stmt->execute([$account_id]);
 
@@ -93,9 +135,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Get all users and their account information (including balance, IBAN, and approval status)
+// Fetch all users and their accounts
 $stmt = $pdo->prepare("
-    SELECT users.id, users.username, users.is_admin, accounts.id AS account_id, accounts.balance, accounts.iban, accounts.is_approved
+    SELECT users.id, users.username, users.is_admin, accounts.id AS account_id, accounts.name AS account_name, accounts.balance, accounts.iban, accounts.is_approved
     FROM users
     LEFT JOIN accounts ON users.id = accounts.user_id
 ");
@@ -109,13 +151,13 @@ $users = $stmt->fetchAll();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
-    <link rel="stylesheet" href="admin_dashboard.css">  <!-- Link to the separate CSS file -->
+    <link rel="stylesheet" href="admin_dashboard.css">
 </head>
 <body>
     <div class="container">
         <h1>Admin Dashboard</h1>
 
-        <!-- Add money to a user -->
+        <!-- Add money -->
         <div class="form-container">
             <h2>Add Money to User</h2>
             <form method="POST">
@@ -125,18 +167,18 @@ $users = $stmt->fetchAll();
             </form>
         </div>
 
-        <!-- Create a new user -->
+        <!-- Create new bank account -->
         <div class="form-container">
-            <h2>Create New User</h2>
+            <h2>Create New Bank Account</h2>
             <form method="POST">
-                Username: <input type="text" name="username" required><br>
-                Password: <input type="password" name="password" required><br>
+                User ID: <input type="number" name="user_id" required><br>
+                Account Name: <input type="text" name="account_name" placeholder="Account Name" required><br>
                 Initial Balance: <input type="number" name="initial_balance" required><br>
-                <button type="submit" name="create_user">Create User</button>
+                <button type="submit" name="create_bank_account">Create Account</button>
             </form>
         </div>
 
-        <!-- Assign admin privileges -->
+        <!-- Assign/remove admin -->
         <div class="form-container">
             <h2>Assign Admin Privileges</h2>
             <form method="POST">
@@ -145,7 +187,6 @@ $users = $stmt->fetchAll();
             </form>
         </div>
 
-        <!-- Remove admin privileges -->
         <div class="form-container">
             <h2>Remove Admin Privileges</h2>
             <form method="POST">
@@ -155,43 +196,39 @@ $users = $stmt->fetchAll();
         </div>
 
         <h2>Users List</h2>
-        <div class="table-container">
-            <table>
-                <tr>
-                    <th>Username</th>
-                    <th>Admin Status</th>
-                    <th>Balance (€)</th>
-                    <th>IBAN</th>
-                    <th>Approval Status</th>
-                    <th>Actions</th>
-                </tr>
-                <?php foreach ($users as $user): ?>
+        <table>
+            <tr>
+                <th>Username</th>
+                <th>Admin Status</th>
+                <th>Account Name</th>
+                <th>Balance (€)</th>
+                <th>IBAN</th>
+                <th>Approval Status</th>
+                <th>Actions</th>
+            </tr>
+            <?php foreach ($users as $user): ?>
                 <tr>
                     <td><?= htmlspecialchars($user['username']) ?></td>
-                    <td class="admin-status <?= $user['is_admin'] ? 'admin' : 'user' ?>"><?= $user['is_admin'] ? 'Admin' : 'User' ?></td>
-                    <td><?= number_format($user['balance'], 2) ?></td>
-                    <td><?= htmlspecialchars($user['iban']) ?></td>
+                    <td><?= $user['is_admin'] ? 'Admin' : 'User' ?></td>
+                    <td><?= htmlspecialchars($user['account_name'] ?? 'N/A') ?></td>
+                    <td><?= number_format($user['balance'] ?? 0, 2) ?></td>
+                    <td><?= htmlspecialchars($user['iban'] ?? 'N/A') ?></td>
                     <td><?= $user['is_approved'] ? 'Approved' : 'Pending' ?></td>
                     <td>
                         <?php if (!$user['is_approved']): ?>
                             <form method="POST" style="display:inline;">
-                                <button type="submit" name="approve_account" value="Approve" style="background-color: green; color: white;">
-                                    Approve
-                                </button>
+                                <button type="submit" name="approve_account">Approve</button>
                                 <input type="hidden" name="account_id_to_approve" value="<?= $user['account_id'] ?>">
                             </form>
                             <form method="POST" style="display:inline;">
-                                <button type="submit" name="reject_account" value="Reject" style="background-color: red; color: white;">
-                                    Reject
-                                </button>
+                                <button type="submit" name="reject_account">Reject</button>
                                 <input type="hidden" name="account_id_to_reject" value="<?= $user['account_id'] ?>">
                             </form>
                         <?php endif; ?>
                     </td>
                 </tr>
-                <?php endforeach; ?>
-            </table>
-        </div>
+            <?php endforeach; ?>
+        </table>
 
         <a href="logout.php" class="logout-btn">Logout</a>
     </div>

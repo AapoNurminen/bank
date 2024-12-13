@@ -79,12 +79,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_account'])) {
 
     try {
         $newIBAN = generateFinnishIBAN($pdo);
-        $stmt = $pdo->prepare("INSERT INTO accounts (user_id, name, iban, balance, pending) VALUES (?, ?, ?, 0, TRUE)");
+        // Set is_approved to FALSE for new accounts
+        $stmt = $pdo->prepare("INSERT INTO accounts (user_id, name, iban, balance, is_approved) VALUES (?, ?, ?, 0, FALSE)");
         $stmt->execute([$user_id, $accountName, $newIBAN]);
-
-        // Notify admin about the new account
-        $admin_email = 'admin@example.com'; // Replace with actual admin email
-        mail($admin_email, "New Account Pending Approval", "A new account has been created by user {$user['username']} and is pending approval. Account Name: {$accountName}, IBAN: {$newIBAN}.");
 
         echo "Account created successfully! IBAN: " . htmlspecialchars($newIBAN) . ". Waiting for admin approval.";
     } catch (Exception $e) {
