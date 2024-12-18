@@ -48,25 +48,10 @@ if (!$user) {
 }
 
 // Get user accounts and balances
-$stmt = $pdo->prepare("
-    SELECT accounts.name, accounts.iban, accounts.balance 
-    FROM accounts 
-    WHERE accounts.user_id = ?
-");
+$stmt = $pdo->prepare("SELECT accounts.id, accounts.name, accounts.iban, accounts.balance, accounts.is_delete_requested 
+    FROM accounts WHERE accounts.user_id = ?");
 $stmt->execute([$user_id]);
 $accounts = $stmt->fetchAll();
-
-// Fetch transaction history
-$stmt = $pdo->prepare("
-    SELECT t.id, t.iban, t.to_iban, t.amount, t.transaction_date, a.balance AS sender_balance, b.balance AS recipient_balance
-    FROM transactions t
-    LEFT JOIN accounts a ON a.iban = t.iban
-    LEFT JOIN accounts b ON b.iban = t.to_iban
-    WHERE t.user_id = ? OR t.to_user_id = ?
-    ORDER BY t.transaction_date DESC
-");
-$stmt->execute([$user_id, $user_id]);
-$transactions = $stmt->fetchAll();
 
 // Handle new account creation
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_account'])) {
@@ -80,7 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_account'])) {
     try {
         $newIBAN = generateFinnishIBAN($pdo);
         // Set is_approved to FALSE for new accounts
-        $stmt = $pdo->prepare("INSERT INTO accounts (user_id, name, iban, balance, is_approved) VALUES (?, ?, ?, 0, FALSE)");
+        $stmt = $pdo->prepare("INSERT INTO accounts (user_id, name, iban, balance, is_approved, is_delete_requested) 
+            VALUES (?, ?, ?, 0, FALSE, 0)");
         $stmt->execute([$user_id, $accountName, $newIBAN]);
 
         echo "Account created successfully! IBAN: " . htmlspecialchars($newIBAN) . ". Waiting for admin approval.";
@@ -89,58 +75,124 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_account'])) {
     }
 }
 
+// Handle account deletion request
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['request_deletion'])) {
+    $account_id = $_POST['account_id'];
+
+    // Check if balance is 0
+    $stmt = $pdo->prepare("SELECT balance FROM accounts WHERE id = ?");
+    $stmt->execute([$account_id]);
+    $account = $stmt->fetch();
+
+    if ($account && $account['balance'] == 0) {
+        $stmt = $pdo->prepare("UPDATE accounts SET is_delete_requested = 1 WHERE id = ?");
+        $stmt->execute([$account_id]);
+        echo "Deletion request sent. Awaiting admin approval.";
+    } else {
+        echo "Account balance must be 0 to request deletion.";
+    }
+}
+
+// Handle default account deletion
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_default_account'])) {
+    $account_id = $_POST['account_id_to_delete'];
+
+    // Check if the account is the only account left and has a balance of 0
+    $stmt = $pdo->prepare("SELECT balance, (SELECT COUNT(*) FROM accounts WHERE user_id = (SELECT user_id FROM accounts WHERE id = ?)) AS account_count FROM accounts WHERE id = ?");
+    $stmt->execute([$account_id, $account_id]);
+    $account = $stmt->fetch();
+
+    if ($account && $account['balance'] == 0 && $account['account_count'] == 1) {
+        // Proceed with account deletion
+        $stmt = $pdo->prepare("DELETE FROM accounts WHERE id = ?");
+        $stmt->execute([$account_id]);
+        echo "Default account has been deleted.";
+    } else {
+        echo "Cannot delete the default account. It must be the only account and have a balance of 0.";
+    }
+}
+
 // Handle transfer form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['from_iban'], $_POST['to_iban'], $_POST['amount'])) {
     $from_iban = $_POST['from_iban'];
     $to_iban = $_POST['to_iban'];
-    $amount = $_POST['amount'];
+    $amount = floatval($_POST['amount']);
 
     if ($amount <= 0) {
-        echo "Invalid amount.";
+        echo "Invalid amount. Please enter a positive value.";
         exit;
     }
-
-    $stmt = $pdo->prepare("SELECT balance FROM accounts WHERE iban = ?");
-    $stmt->execute([$from_iban]);
-    $sender_account = $stmt->fetch();
-
-    if (!$sender_account) {
-        echo "Sender's account not found.";
-        exit;
-    }
-
-    if ($sender_account['balance'] < $amount) {
-        echo "Insufficient funds.";
-        exit;
-    }
-
-    $stmt = $pdo->prepare("SELECT a.user_id FROM accounts a WHERE a.iban = ?");
-    $stmt->execute([$to_iban]);
-    $recipient_user = $stmt->fetch();
-
-    if (!$recipient_user) {
-        echo "Recipient's account not found.";
-        exit;
-    }
-
-    $recipient_user_id = $recipient_user['user_id'];
 
     try {
+        // Begin transaction
         $pdo->beginTransaction();
-        $stmt = $pdo->prepare("UPDATE accounts SET balance = balance - ? WHERE iban = ?");
-        $stmt->execute([$amount, $from_iban]);
-        $stmt = $pdo->prepare("UPDATE accounts SET balance = balance + ? WHERE iban = ?");
-        $stmt->execute([$amount, $to_iban]);
-        $stmt = $pdo->prepare("INSERT INTO transactions (iban, user_id, to_iban, to_user_id, amount, info) 
-                               VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$from_iban, $user_id, $to_iban, $recipient_user_id, $amount, 'Transfer from ' . $from_iban]);
+
+        // Check sender's account balance
+        $stmt = $pdo->prepare("SELECT balance FROM accounts WHERE iban = ? AND user_id = ?");
+        $stmt->execute([$from_iban, $user_id]);
+        $sender_account = $stmt->fetch();
+
+        if (!$sender_account) {
+            throw new Exception("Sender's account not found or unauthorized.");
+        }
+
+        if ($sender_account['balance'] < $amount) {
+            throw new Exception("Insufficient funds in the sender's account.");
+        }
+
+        // Check recipient's account
+        $stmt = $pdo->prepare("SELECT user_id FROM accounts WHERE iban = ?");
+        $stmt->execute([$to_iban]);
+        $recipient_account = $stmt->fetch();
+
+        if (!$recipient_account) {
+            throw new Exception("Recipient's account not found.");
+        }
+
+        // // Perform the transfer: Deduct from sender
+        // $stmt = $pdo->prepare("UPDATE accounts SET balance = balance - ? WHERE iban = ?");
+        // $stmt->execute([$amount, $from_iban]);
+
+        // // Add to recipient
+        // $stmt = $pdo->prepare("UPDATE accounts SET balance = balance + ? WHERE iban = ?");
+        // $stmt->execute([$amount, $to_iban]);
+
+        // Log the transaction
+        $stmt = $pdo->prepare("
+            INSERT INTO transactions (iban, user_id, to_iban, to_user_id, amount, info) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $from_iban,
+            $user_id,
+            $to_iban,
+            $recipient_account['user_id'],
+            $amount,
+            'Transfer from ' . $from_iban
+        ]);
+
+        // Commit transaction
         $pdo->commit();
+
         echo "Transfer successful!";
     } catch (Exception $e) {
+        // Roll back transaction on error
         $pdo->rollBack();
-        echo "Failed to complete the transfer: " . $e->getMessage();
+        echo "Failed to complete the transfer: " . htmlspecialchars($e->getMessage());
     }
 }
+
+// Fetch transaction history
+$stmt = $pdo->prepare("
+    SELECT t.id, t.iban, t.to_iban, t.amount, t.transaction_date, a.balance AS sender_balance, b.balance AS recipient_balance
+    FROM transactions t
+    LEFT JOIN accounts a ON a.iban = t.iban
+    LEFT JOIN accounts b ON b.iban = t.to_iban
+    WHERE t.user_id = ? OR t.to_user_id = ?
+    ORDER BY t.transaction_date DESC
+");
+$stmt->execute([$user_id, $user_id]);
+$transactions = $stmt->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -161,12 +213,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['from_iban'], $_POST['t
                 <th>Account Name</th>
                 <th>IBAN</th>
                 <th>Balance (€)</th>
+                <th>Actions</th>
             </tr>
             <?php foreach ($accounts as $account): ?>
             <tr>
                 <td><?= htmlspecialchars($account['name']) ?></td>
                 <td><?= htmlspecialchars($account['iban']) ?></td>
                 <td style="text-align: left;"><?= number_format($account['balance'], 2) ?></td>
+                <td>
+                    <?php if ($account['balance'] == 0 && $account['is_delete_requested'] == 0 && $account['name'] != 'Default Account'): ?>
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="account_id" value="<?= $account['id'] ?>">
+                            <button type="submit" name="request_deletion">Request Deletion</button>
+                        </form>
+                    <?php elseif ($account['is_delete_requested'] == 1): ?>
+                        <span>Deletion Pending Approval</span>
+                    <?php endif; ?>
+                    <!-- Default account deletion form -->
+                    <?php if ($account['name'] == 'Default Account' && $account['balance'] == 0 && count($accounts) == 1): ?>
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="account_id_to_delete" value="<?= $account['id'] ?>">
+                            <button type="submit" name="delete_default_account">Delete Default Account</button>
+                        </form>
+                    <?php endif; ?>
+                </td>
             </tr>
             <?php endforeach; ?>
         </table>

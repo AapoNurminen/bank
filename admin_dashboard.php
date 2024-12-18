@@ -133,11 +133,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         echo "<p class='success'>Account ID $account_id has been rejected and removed.</p>";
     }
+    // Delete an account if requested
+    elseif (isset($_POST['delete_account'])) {
+        $account_id = $_POST['account_id_to_delete'];
+
+        // Delete the account from the database
+        $stmt = $pdo->prepare("DELETE FROM accounts WHERE id = ?");
+        $stmt->execute([$account_id]);
+
+        echo "<p class='success'>Account ID $account_id has been deleted.</p>";
+    }
 }
 
-// Fetch all users and their accounts
+// Fetch all users and their accounts, including is_delete_requested
 $stmt = $pdo->prepare("
-    SELECT users.id, users.username, users.is_admin, accounts.id AS account_id, accounts.name AS account_name, accounts.balance, accounts.iban, accounts.is_approved
+    SELECT users.id, users.username, users.is_admin, accounts.id AS account_id, accounts.name AS account_name, accounts.balance, accounts.iban, accounts.is_approved, accounts.is_delete_requested
     FROM users
     LEFT JOIN accounts ON users.id = accounts.user_id
 ");
@@ -204,6 +214,7 @@ $users = $stmt->fetchAll();
                 <th>Balance (€)</th>
                 <th>IBAN</th>
                 <th>Approval Status</th>
+                <th>Delete Requested</th>
                 <th>Actions</th>
             </tr>
             <?php foreach ($users as $user): ?>
@@ -214,6 +225,7 @@ $users = $stmt->fetchAll();
                     <td><?= number_format($user['balance'] ?? 0, 2) ?></td>
                     <td><?= htmlspecialchars($user['iban'] ?? 'N/A') ?></td>
                     <td><?= $user['is_approved'] ? 'Approved' : 'Pending' ?></td>
+                    <td><?= $user['is_delete_requested'] ? 'Yes' : 'No' ?></td>
                     <td>
                         <?php if (!$user['is_approved']): ?>
                             <form method="POST" style="display:inline;">
@@ -223,6 +235,13 @@ $users = $stmt->fetchAll();
                             <form method="POST" style="display:inline;">
                                 <button type="submit" name="reject_account">Reject</button>
                                 <input type="hidden" name="account_id_to_reject" value="<?= $user['account_id'] ?>">
+                            </form>
+                        <?php endif; ?>
+
+                        <?php if ($user['is_delete_requested']): ?>
+                            <form method="POST" style="display:inline;">
+                                <button type="submit" name="delete_account">Delete</button>
+                                <input type="hidden" name="account_id_to_delete" value="<?= $user['account_id'] ?>">
                             </form>
                         <?php endif; ?>
                     </td>

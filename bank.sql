@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Dec 10, 2024 at 01:49 PM
+-- Generation Time: Dec 18, 2024 at 01:09 PM
 -- Server version: 10.4.27-MariaDB
--- PHP Version: 8.2.0
+-- PHP Version: 8.1.12
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -31,16 +31,20 @@ CREATE TABLE `accounts` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `balance` decimal(15,2) DEFAULT 0.00,
-  `iban` varchar(34) NOT NULL
+  `iban` varchar(34) NOT NULL,
+  `account_name` varchar(255) NOT NULL,
+  `name` varchar(255) NOT NULL DEFAULT 'Unnamed Account',
+  `is_approved` tinyint(1) DEFAULT 0,
+  `is_delete_requested` tinyint(1) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `accounts`
 --
 
-INSERT INTO `accounts` (`id`, `user_id`, `balance`, `iban`) VALUES
-(1, 1, '56.00', 'FI781493867098939'),
-(2, 2, '144.00', 'FI599294740566916');
+INSERT INTO `accounts` (`id`, `user_id`, `balance`, `iban`, `account_name`, `name`, `is_approved`, `is_delete_requested`) VALUES
+(1, 1, '275.00', 'FI781493867098939', '', 'Unnamed Account', 1, 0),
+(12, 1, '325.00', 'FI325539120593278', '', 'savings', 1, 0);
 
 -- --------------------------------------------------------
 
@@ -64,9 +68,21 @@ CREATE TABLE `transactions` (
 --
 
 INSERT INTO `transactions` (`id`, `iban`, `user_id`, `to_iban`, `to_user_id`, `amount`, `info`, `transaction_date`) VALUES
-(1, 'FI781493867098939', 1, 'FI599294740566916', 2, '21.00', 'Transfer from FI781493867098939', '2024-12-10 11:50:07'),
-(2, 'FI781493867098939', 1, 'FI599294740566916', 2, '21.00', 'Transfer from FI781493867098939', '2024-12-10 11:50:10'),
-(3, 'FI781493867098939', 1, 'FI599294740566916', 2, '2.00', 'Transfer from FI781493867098939', '2024-12-10 12:00:59');
+(13, 'FI781493867098939', 1, 'FI325539120593278', 1, '200.00', 'Transfer from FI781493867098939', '2024-12-18 11:46:38'),
+(15, 'FI781493867098939', 1, 'FI325539120593278', 1, '123.00', 'Transfer from FI781493867098939', '2024-12-18 11:51:23'),
+(16, 'FI781493867098939', 1, 'FI325539120593278', 1, '2.00', 'Transfer from FI781493867098939', '2024-12-18 12:07:38');
+
+--
+-- Triggers `transactions`
+--
+DELIMITER $$
+CREATE TRIGGER `transactions_trigger` AFTER INSERT ON `transactions` FOR EACH ROW UPDATE accounts SET balance = balance - NEW.amount WHERE iban = NEW.iban
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `transactions_trigger1` AFTER INSERT ON `transactions` FOR EACH ROW UPDATE accounts SET balance = balance + NEW.amount WHERE iban = NEW.to_iban
+$$
+DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -87,7 +103,7 @@ CREATE TABLE `users` (
 
 INSERT INTO `users` (`id`, `username`, `password`, `is_admin`) VALUES
 (1, 'aapo', '$2y$10$fd0aqoOT4S3cCxxSZCLgre5kzYWt/kzfV2jqm3kh2vIb70f.DwrpG', 1),
-(2, 'arttu', '$2y$10$hhFV93vkujYjTmjgNIMjjO.77bIR6AEgar0oO8CTkBH0lES.Q1e..', 0);
+(7, 'q', '$2y$10$djZY0RkUYmODW4IFjIlnt.N8V8my/cETTK7bljiEeQZsfwm0cW7TC', 0);
 
 --
 -- Indexes for dumped tables
@@ -125,19 +141,19 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `accounts`
 --
 ALTER TABLE `accounts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
 
 --
 -- AUTO_INCREMENT for table `transactions`
 --
 ALTER TABLE `transactions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- Constraints for dumped tables
